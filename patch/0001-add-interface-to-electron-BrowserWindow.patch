@@ -1,0 +1,141 @@
+From 1a35b4e377e9b92db9f13669a0d465f4d94384be Mon Sep 17 00:00:00 2001
+From: pillose <pillose@pillose.kro.kr>
+Date: Fri, 24 Feb 2023 20:02:57 +0900
+Subject: [PATCH] add interface to electron BrowserWindow
+
+---
+ common/constants/ipcevents.js  |  4 ++++
+ injector/src/modules/ipc.js    | 35 ++++++++++++++++++++++++++++++++++
+ renderer/src/modules/api/ui.js | 19 +++++++++++++++++-
+ renderer/src/modules/ipc.js    | 16 ++++++++++++++++
+ 4 files changed, 73 insertions(+), 1 deletion(-)
+
+diff --git a/common/constants/ipcevents.js b/common/constants/ipcevents.js
+index eed2e5c..bdc5345 100644
+--- a/common/constants/ipcevents.js
++++ b/common/constants/ipcevents.js
+@@ -10,6 +10,10 @@ export const OPEN_DEVTOOLS      = "bd-open-devtools";
+ export const CLOSE_DEVTOOLS     = "bd-close-devtools";
+ export const TOGGLE_DEVTOOLS    = "bd-toggle-devtools";
+ export const OPEN_WINDOW        = "bd-open-window";
++export const _OPEN_WINDOW       = "_bd-open-window";
++export const _CLOSE_WINDOW      = "_bd-close-window";
++export const _RUN_WINDOW        = "_bd-run-window";
++export const _EXIST_WINDOW      = "_bd-exist-window";
+ export const INSPECT_ELEMENT    = "bd-inspect-element";
+ export const MINIMUM_SIZE       = "bd-minimum-size";
+ export const DEVTOOLS_WARNING   = "bd-remove-devtools-message";
+diff --git a/injector/src/modules/ipc.js b/injector/src/modules/ipc.js
+index d60a01b..f938ea9 100644
+--- a/injector/src/modules/ipc.js
++++ b/injector/src/modules/ipc.js
+@@ -66,6 +66,37 @@ const createBrowserWindow = (event, url, {windowOptions, closeOnUrl} = {}) => {
+     });
+ };
+ 
++const _createBrowserWindow = (event, url, options = {}) => {
++    return new Promise(resolve => {
++        const windowInstance = new BrowserWindow(options);
++        windowInstance.loadURL(url);
++
++        resolve(windowInstance.id);
++    });
++};
++
++const _removeBrowserWindow = (event, id) => {
++    return new Promise(resolve => {
++        const windowInstance = BrowserWindow.fromId(id);
++        resolve(windowInstance.close());
++    });
++};
++
++const _existBrowserWindow = (event, id) => {
++    return new Promise(resolve => {
++        const windowInstance = BrowserWindow.fromId(id);
++        resolve(windowInstance !== null);
++    });
++};
++
++const _runBrowserWindow = (event, id, script) => {
++    return new Promise(resolve => {
++        const windowInstance = BrowserWindow.fromId(id);
++        const contents = windowInstance.webContents;
++        resolve(contents.executeJavaScript(script));
++    });
++};
++
+ const inspectElement = async event => {
+     if (!event.sender.isDevToolsOpened()) {
+         event.sender.openDevTools();
+@@ -141,6 +172,10 @@ export default class IPCMain {
+             ipc.handle(IPCEvents.RUN_SCRIPT, runScript);
+             ipc.handle(IPCEvents.OPEN_DIALOG, openDialog);
+             ipc.handle(IPCEvents.OPEN_WINDOW, createBrowserWindow);
++            ipc.handle(IPCEvents._OPEN_WINDOW, _createBrowserWindow);
++            ipc.handle(IPCEvents._EXIST_WINDOW, _existBrowserWindow);
++            ipc.handle(IPCEvents._CLOSE_WINDOW, _removeBrowserWindow);
++            ipc.handle(IPCEvents._RUN_WINDOW, _runBrowserWindow);
+         }
+         catch (err) {
+             // eslint-disable-next-line no-console
+diff --git a/renderer/src/modules/api/ui.js b/renderer/src/modules/api/ui.js
+index ac3ab31..82875f7 100644
+--- a/renderer/src/modules/api/ui.js
++++ b/renderer/src/modules/api/ui.js
+@@ -106,8 +106,25 @@ const UI = {
+         if (data.error) throw new Error(data.error);
+ 
+         return data;
+-    }
++    },
++
++    async openWindow(url, options) {
++        const winId = await ipc._openWindow(url, options);
++
++        return winId;
++    },
+ 
++    async existWindow(id) {
++        return await ipc._existWindow(id);
++    },
++
++    async closeWindow(id) {
++        return await ipc._closeWindow(id);
++    },
++
++    async runWindow(id, script) {
++        return await ipc._runWindow(id, script);
++    }
+ };
+ 
+ Object.freeze(UI);
+diff --git a/renderer/src/modules/ipc.js b/renderer/src/modules/ipc.js
+index 15858a0..4f3282a 100644
+--- a/renderer/src/modules/ipc.js
++++ b/renderer/src/modules/ipc.js
+@@ -36,6 +36,22 @@ export default new class IPCRenderer {
+         return ipc.invoke(IPCEvents.OPEN_WINDOW, url, options);
+     }
+ 
++    _openWindow(url, options) {
++        return ipc.invoke(IPCEvents._OPEN_WINDOW, url, options);
++    }
++
++    _existWindow(id) {
++        return ipc.invoke(IPCEvents._EXIST_WINDOW, id);
++    }
++
++    _closeWindow(id) {
++        return ipc.invoke(IPCEvents._CLOSE_WINDOW, id);
++    }
++
++    _runWindow(id, script) {
++        return ipc.invoke(IPCEvents._RUN_WINDOW, id, script);
++    }
++
+     inspectElement() {
+         return ipc.send(IPCEvents.INSPECT_ELEMENT);
+     }
+-- 
+2.34.1
+
