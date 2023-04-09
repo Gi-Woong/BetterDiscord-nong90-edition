@@ -1,1 +1,2 @@
-BetterDiscord-nong90-edition 
+BetterDiscord-nong90-edition
+이다.
